@@ -1,8 +1,11 @@
 package com.netflix.astyanax.entitystore;
 
+import java.beans.ConstructorProperties;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -40,8 +43,10 @@ class EntityMapper<T, K> {
 	private final Map<String, ColumnMapper> columnList;
 	private final ColumnMapper uniqueColumn;
 	private final String entityName;
-	
-	/**
+    private final ConstructorProperties constructorProperties; // may be null
+    private final Constructor constructor; // null iff constructorProperties is null
+
+    /**
 	 * 
 	 * @param clazz
 	 * @throws IllegalArgumentException 
@@ -57,8 +62,23 @@ class EntityMapper<T, K> {
 			throw new IllegalArgumentException("class is NOT annotated with @java.persistence.Entity: " + clazz.getName());
 		
 		entityName = MappingUtils.getEntityName(entityAnnotation, clazz);
-		
-		// TTL value from constructor or class-level annotation
+
+        ConstructorProperties cp = null;
+        Constructor c = null;
+        for (Constructor constructor : clazz.getDeclaredConstructors()) {
+            if (constructor.getAnnotation(ConstructorProperties.class) != null) {
+                if (cp != null) {
+                    throw new IllegalArgumentException("Exactly one constructor must have @java.beans.ConstructorProperties annotation."
+                                                       + " Found at least two in class: " + clazz.getName());
+                }
+                cp = (ConstructorProperties) constructor.getAnnotation(ConstructorProperties.class);
+                c = constructor;
+            }
+        }
+        this.constructorProperties = cp;
+        this.constructor = (cp == null) ? null : Preconditions.checkNotNull(c);
+
+        // TTL value from constructor or class-level annotation
 		Integer tmpTtlValue = ttl;
 		if(tmpTtlValue == null) {
 			// constructor value has higher priority
@@ -155,14 +175,7 @@ class EntityMapper<T, K> {
 
 	T constructEntity(K id, ColumnList<String> cl) {
 		try {
-		    T entity = clazz.newInstance();
-			idField.set(entity, id);
-			
-			for (com.netflix.astyanax.model.Column<String> column : cl) {
-			    List<String> name = Lists.newArrayList(StringUtils.split(column.getName(), "."));
-			    setField(entity, name.iterator(), column);
-			}
-			
+            T entity = (constructor == null) ? constructMutableEntity(id, cl) : constructImmutableEntity(id, cl);
 			for (ColumnMapper column : columnList.values()) {
 			    column.validate(entity);
 			}
@@ -171,14 +184,57 @@ class EntityMapper<T, K> {
 			throw new PersistenceException("failed to construct entity", e);
 		}
 	}
-	
-	void setField(T entity, Iterator<String> name, com.netflix.astyanax.model.Column<String> column) throws Exception {
-	    String fieldName = name.next();
-	    ColumnMapper mapper = this.columnList.get(fieldName);
+
+    private T constructMutableEntity(K id, ColumnList<String> cl) throws Exception {
+        T entity = clazz.newInstance();
+        idField.set(entity, id);
+
+        for (com.netflix.astyanax.model.Column<String> column : cl) {
+            List<String> name = getColumnName(column);
+            setField(entity, name.iterator(), column);
+        }
+        return entity;
+    }
+
+    void setField(T entity, Iterator<String> name, com.netflix.astyanax.model.Column<String> column) throws Exception {
+        String fieldName = name.next();
+        ColumnMapper mapper = this.columnList.get(fieldName);
         if (mapper != null)
             mapper.setField(entity, name, column);
-	}
-	
+    }
+
+    private T constructImmutableEntity(K id, ColumnList<String> cl) throws Exception {
+        T entity = clazz.newInstance();
+        idField.set(entity, id);
+
+        Object[] values = new Object[this.constructorProperties.value().length];
+        for (int i = 0; i < values.length; i++) {
+            String columnName = this.constructorProperties.value()[i];
+            final Object value;
+            if (idField.getName().equals(columnName)) {
+                value = id;
+            } else {
+                ColumnMapper mapper = this.columnList.get(columnName);
+                Preconditions.checkNotNull(mapper, String.format("No mapper for column %s in entity %s", columnName, clazz.getName()));
+                Preconditions.checkNotNull(mapper.getField());
+                com.netflix.astyanax.model.Column<String> column = cl.getColumnByName(columnName);
+                Iterator<String> name = getColumnName(column).iterator();
+                String fieldName = name.next();
+                if (!fieldName.equals(columnName)) {
+                    throw new IllegalStateException(String.format("Column name (%s) should equal field name (%s) in %s",
+                                                                  columnName, fieldName, clazz.getName()));
+                }
+                value = mapper.valueForColumn(name, column);
+            }
+            values[i] = value;
+        }
+        return clazz.cast(constructor.newInstance(values));
+    }
+
+    private ArrayList<String> getColumnName(com.netflix.astyanax.model.Column<String> column) {
+        return Lists.newArrayList(StringUtils.split(column.getName(), "."));
+    }
+
 	@SuppressWarnings("unchecked")
 	K getEntityId(T entity) throws Exception {
 	    return (K)idField.get(entity);

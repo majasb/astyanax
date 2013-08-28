@@ -8,6 +8,7 @@ import java.util.Set;
 import com.google.common.collect.Sets;
 import com.netflix.astyanax.ColumnListMutation;
 import com.netflix.astyanax.Serializer;
+import com.netflix.astyanax.model.Column;
 import com.netflix.astyanax.serializers.SerializerTypeInferer;
 
 /**
@@ -60,7 +61,7 @@ public class SetColumnMapper extends AbstractColumnMapper {
         String value = name.next();
         if (name.hasNext())
             return false;
-        set.add(serializer.fromByteBuffer(serializer.fromString(value)));
+        set.add(deserializeElementValue(value));
         return true;
     }
 
@@ -68,5 +69,19 @@ public class SetColumnMapper extends AbstractColumnMapper {
     public void validate(Object entity) throws Exception {
         // TODO Auto-generated method stub
         
+    }
+
+    @Override
+    public Object valueForColumn(Iterator<String> name, Column<String> column) {
+        String value = name.next();
+        if (name.hasNext())
+            return null;
+        Set<Object> set = Sets.newHashSet();
+        set.add(deserializeElementValue(value));
+        return set;
+    }
+
+    private Object deserializeElementValue(String value) {
+        return serializer.fromByteBuffer(serializer.fromString(value));
     }
 }

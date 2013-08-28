@@ -32,4 +32,11 @@ interface ColumnMapper {
 	 * Return the field associated with this mapper
 	 */
 	public Field getField();
+
+    /**
+     * @return the value for the column, or null if not-existent column for nullable field
+     * @throws IllegalArgumentException if value is null and field is NOT nullable
+     */
+    Object valueForColumn(Iterator<String> name, Column<String> column) throws Exception;
+
 }

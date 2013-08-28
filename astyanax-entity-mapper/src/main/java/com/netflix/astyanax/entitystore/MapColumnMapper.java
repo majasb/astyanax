@@ -9,6 +9,7 @@ import java.util.Map.Entry;
 import com.google.common.collect.Maps;
 import com.netflix.astyanax.ColumnListMutation;
 import com.netflix.astyanax.Serializer;
+import com.netflix.astyanax.model.Column;
 import com.netflix.astyanax.serializers.SerializerTypeInferer;
 
 public class MapColumnMapper extends AbstractColumnMapper {
@@ -60,14 +61,31 @@ public class MapColumnMapper extends AbstractColumnMapper {
         String key = name.next();
         if (name.hasNext())
             return false;
-        map.put(keySerializer.fromByteBuffer(keySerializer.fromString(key)),
-                valueSerializer.fromByteBuffer(column.getByteBufferValue()));
+        map.put(deserializeKey(key), deserializeValue(column));
         return true;
     }
 
     @Override
     public void validate(Object entity) throws Exception {
         // TODO Auto-generated method stub
+    }
+
+    @Override
+    public Object valueForColumn(Iterator<String> name, Column<String> column) {
+        if (name.hasNext())
+            return null;
+        Map<Object, Object> map = Maps.newLinkedHashMap();
+        String key = name.next();
+        map.put(deserializeKey(key), deserializeValue(column));
+        return map;
+    }
+
+    private Object deserializeKey(String key) {
+        return keySerializer.fromByteBuffer(keySerializer.fromString(key));
+    }
+
+    private Object deserializeValue(Column<String> column) {
+        return valueSerializer.fromByteBuffer(column.getByteBufferValue());
     }
 
 }

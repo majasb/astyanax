@@ -5,6 +5,7 @@ import java.util.Iterator;
 
 import com.netflix.astyanax.ColumnListMutation;
 import com.netflix.astyanax.Serializer;
+import com.netflix.astyanax.model.Column;
 
 class LeafColumnMapper extends AbstractColumnMapper {
 	
@@ -46,7 +47,7 @@ class LeafColumnMapper extends AbstractColumnMapper {
     public boolean setField(Object entity, Iterator<String> name, com.netflix.astyanax.model.Column<String> column) throws Exception {
         if (name.hasNext()) 
             return false;
-        final Object fieldValue = column.getValue(serializer);
+        final Object fieldValue = valueForColumn(name, column);
         field.set(entity, fieldValue);
         return true;
     }
@@ -55,5 +56,12 @@ class LeafColumnMapper extends AbstractColumnMapper {
     public void validate(Object entity) throws Exception {
         if (field.get(entity) == null && !columnAnnotation.nullable())
             throw new IllegalArgumentException("cannot find non-nullable column: " + columnName);
+    }
+
+    @Override
+    public Object valueForColumn(Iterator<String> name, Column<String> column) {
+        if (name.hasNext())
+            return null;
+        return column.getValue(serializer);
     }
 }

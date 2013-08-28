@@ -116,4 +116,11 @@ class CompositeColumnMapper extends AbstractColumnMapper {
         }
     }
 
+    @Override
+    public Object valueForColumn(Iterator<String> name, com.netflix.astyanax.model.Column<String> column) throws Exception {
+        ColumnMapper mapper = this.columnList.get(name.next());
+        if (mapper == null)
+            return null;
+        return mapper.valueForColumn(name, column);
+    }
 }
